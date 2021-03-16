@@ -6,7 +6,7 @@ namespace MessageQueueApplication.Classes
 {
     public class MQApplicationMessageStorage
     {
-        private List<MQApplicationMessage> MessageList;
+        private List<MQApplicationMessage> MessageList = new List<MQApplicationMessage>();
         private long id = 1;
 
         public MQApplicationMessage CreateMessage(int Code, Object obj)
@@ -44,6 +44,17 @@ namespace MessageQueueApplication.Classes
             lock (MessageList)
             {
                 MQApplicationMessage message = MessageList.Find(delegate (MQApplicationMessage message) { return message.id == id; });
+                MessageList.Remove(message);
+                return message;
+            }
+        }
+
+        public MQApplicationMessage ExtractMessage()
+        {
+            lock (MessageList)
+            {
+                if (MessageList.Count == 0) return null;
+                MQApplicationMessage message = MessageList[0];
                 MessageList.Remove(message);
                 return message;
             }

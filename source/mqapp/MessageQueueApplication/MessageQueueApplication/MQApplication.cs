@@ -10,18 +10,19 @@ namespace MessageQueueApplication
         MC_DISPATCH_MESSAGE = 1
     }
 
-    public abstract class MQApplication: IMQApplication
+    public abstract class MQApplicationBase: IMQApplication
     {
-        private bool Active = false;
+        protected int Active = 0;
         private int _terminated = 0;
-        private MQApplicationMessageStorage MessageStorage = new MQApplicationMessageStorage();
+        protected MQApplicationMessageStorage MessageStorage = new MQApplicationMessageStorage();
         private Thread ActiveThread = null;
 
         protected abstract void InternalSendMessage(int Code);
         protected abstract void InternalLoopMessages();
         protected abstract void InternalPrepare();
+        protected abstract void InternalStop();
 
-        protected void DispatchMessage(MQApplicationMessage message)
+        protected virtual void DispatchMessage(MQApplicationMessage message)
         {
 
         }
@@ -66,17 +67,17 @@ namespace MessageQueueApplication
 
         public bool Run()
         {
-            if (Active) return false;
+            if (Active != 0) return false;
             if (Terminated) return false;
             if (ActiveThread != null) return false;
+            Active = 1;
             ActiveThread = new Thread(new ThreadStart(Proc));
             ActiveThread.Start();
-            Active = true;
             return true;
         }
         public void Wait()
         {
-            if (!Active) return;
+            if (Active == 0) return;
             while (!Terminated)
             {
                 Thread.Sleep(1);
@@ -84,14 +85,15 @@ namespace MessageQueueApplication
         }
         public bool Stop()
         {
-            if (!Active) return false;
-            SendMessage(MQApplicationMessageCode.MC_TERMINATE);
-            Active = false;
+            if (Active == 0) return false;
+            Interlocked.Exchange(ref Active, 0);
+            InternalStop();
+            //SendMessage(MQApplicationMessageCode.MC_TERMINATE);
             return true;
         }
         public bool SendMessage(int Code, Object obj = null)
         {
-            if (!Active) return false;
+            if (Active == 0) return false;
             MessageStorage.CreateMessage(Code, obj);
             InternalSendMessage(Code);
             return true;
@@ -102,25 +104,48 @@ namespace MessageQueueApplication
             return SendMessage((int)Code, obj);
         }
 
-        public static MQApplication CreateApplication()
+        public static MQApplicationBase CreateApplication()
         {
             return new MQApplicationWin();
         }
     }
 
-    public class MQApplicationWin: MQApplication
+    public class MQApplicationWin: MQApplicationBase
     {
-        protected abstract void InternalSendMessage(int Code)
-        {
+        private EventWaitHandle ewh;
 
-        }
-        protected abstract void InternalLoopMessages()
+        protected override void InternalSendMessage(int Code)
         {
-
+            ewh.Set();
         }
-        protected abstract void InternalPrepare()
+        protected override void InternalLoopMessages()
         {
+            if (ewh == null) return;
+            MQApplicationMessage message;
 
+            while (ewh.WaitOne())
+            {
+                if (Active == 0) return;
+                while (true)
+                {
+                    message = MessageStorage.ExtractMessage();
+                    if (message == null) break;
+                    DispatchMessage(message);
+                }
+            }
         }
+        protected override void InternalPrepare()
+        {
+            ewh = new EventWaitHandle(false, EventResetMode.AutoReset);
+        }
+
+        protected override void InternalStop()
+        {
+            ewh.Set();
+            ewh = null;
+        }
+
     }
+
+    public class MQApplication : MQApplicationWin { }
 }
