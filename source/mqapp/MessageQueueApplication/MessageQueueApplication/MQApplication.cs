@@ -37,6 +37,11 @@ namespace MessageQueueApplication
 
         }
 
+        protected virtual void OnShutdown()
+        {
+
+        }
+
         protected virtual void OnException(Exception e)
         {
 
@@ -44,7 +49,7 @@ namespace MessageQueueApplication
 
         protected virtual void DispatchMessage(MQMessage message)
         {
-
+            throw new Exception("Неизвестный тип сообщения " + message.Code.ToString());
         }
 
         protected virtual void DispatchMessageException(Exception e)
@@ -132,6 +137,7 @@ namespace MessageQueueApplication
             } finally
             {
                 timer.Dispose();
+                OnShutdown();
             }
         }
 

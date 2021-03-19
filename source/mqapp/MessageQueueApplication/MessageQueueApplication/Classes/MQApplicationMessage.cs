@@ -5,10 +5,15 @@ using System.Text;
 
 namespace MessageQueueApplication.Classes
 {
+    public class MQApplicationMessage
+    {
+        internal int _code;
+        public int Code { get => _code; }
+    }
+
     public class MQApplicationMessageStorage
     {
         private ConcurrentQueue<MQApplicationMessage> MessageQueue = new ConcurrentQueue<MQApplicationMessage>();
-        private long id = 1;
 
         public MQApplicationMessage CreateMessage(int Code)
         {
@@ -24,11 +29,5 @@ namespace MessageQueueApplication.Classes
             if (MessageQueue.TryDequeue(out message)) return message;
             return null;
         }
-    }
-
-    public class MQApplicationMessage
-    {
-        internal int _code;
-        public int Code { get => _code; }
     }
 }

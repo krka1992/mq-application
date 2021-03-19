@@ -35,7 +35,9 @@ namespace MQARun
 
         private void button1_Click(object sender, EventArgs e)
         {
-            ca.MQNotify(0);
+            ca.MQNotify(1);
+            ca.MQNotify(2);
+            ca.MQNotify(3);
         }
 
         protected override void WndProc(ref Message m)
@@ -61,13 +63,15 @@ namespace MQARun
 
         private void button2_Click(object sender, EventArgs e)
         {
-            ca.SendMessage(1);
-            ca.SendMessage(1);
-            ca.SendMessage(1);
-            ca.SendMessage(1);
+            ca.MQNotify(0);
         }
 
         private void Form1_FormClosing(object sender, FormClosingEventArgs e)
+        {
+            ca.Terminate();
+        }
+
+        private void button3_Click(object sender, EventArgs e)
         {
             ca.Terminate();
         }
