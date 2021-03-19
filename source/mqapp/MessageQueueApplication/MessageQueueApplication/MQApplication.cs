@@ -1,35 +1,77 @@
 ﻿using System;
 using System.Threading;
 using MessageQueueApplication.Classes;
+using System.Timers;
+using Timer = System.Timers.Timer;
 
 namespace MessageQueueApplication
 {
     public enum MQApplicationMessageCode
     {
         MC_TERMINATE = 0,
-        MC_DISPATCH_MESSAGE = 1
+        MC_DISPATCH_MESSAGE = 1,
+        MC_TIMER = 2
     }
 
-    public abstract class MQApplicationBase: IMQApplication
+    public abstract class MQApplicationBase: IMQApplication, IMessageQueue
     {
         protected int Active = 0;
         private int _terminated = 0;
         protected MQApplicationMessageStorage MessageStorage = new MQApplicationMessageStorage();
+        protected MQMessageStorage MQMessageStorage;
         private Thread ActiveThread = null;
+        private Timer timer = null;
 
         protected abstract void InternalSendMessage(int Code);
         protected abstract void InternalLoopMessages();
         protected abstract void InternalPrepare();
         protected abstract void InternalStop();
 
-        protected virtual void DispatchMessage(MQApplicationMessage message)
+        protected virtual void OnTimer()
         {
 
         }
 
-        internal void ProcessMessage(long id) 
+        protected virtual void OnStartup()
         {
-            MQApplicationMessage message = MessageStorage.ExtractMessage(id);
+
+        }
+
+        protected virtual void OnException(Exception e)
+        {
+
+        }
+
+        protected virtual void DispatchMessage(MQMessage message)
+        {
+
+        }
+
+        protected virtual void DispatchMessageException(Exception e)
+        {
+            throw e;
+        }
+
+        private void DispatchMessageQueue()
+        {
+            MQMessage message;
+            while (true)
+            {
+                message = MQMessageStorage.ExtractMessage();
+                if (message == null) return;
+                try
+                {
+                    DispatchMessage(message);
+                } catch (Exception e)
+                {
+                    DispatchMessageException(e);
+                }
+            }
+        }
+
+        internal void ProcessMessage() 
+        {
+            MQApplicationMessage message = MessageStorage.ExtractMessage();
             if (message == null) return;
 
             switch (message.Code)
@@ -38,7 +80,10 @@ namespace MessageQueueApplication
                     Terminate();
                     return;
                 case (int)MQApplicationMessageCode.MC_DISPATCH_MESSAGE:
-                    DispatchMessage(message);
+                    DispatchMessageQueue();
+                    return;
+                case (int)MQApplicationMessageCode.MC_TIMER:
+                    OnTimer();
                     return;
             }            
         }
@@ -53,16 +98,49 @@ namespace MessageQueueApplication
             InternalPrepare();
         }
 
+        private void TimerSystem(object sender, ElapsedEventArgs e)
+        {
+            SendMessage(MQApplicationMessageCode.MC_TIMER);
+        }
+
         private void Proc()
         {
             Prepare();
-            LoopMessages();
+            OnStartup();
+            timer = new Timer(1000);
+            timer.AutoReset = true;
+            timer.Elapsed += TimerSystem;
+            try
+            {
+                timer.Start();
+
+                while (!Terminated)
+                {
+                    try
+                    {
+                        LoopMessages();
+                    }
+                    catch (Exception e)
+                    {
+                        OnException(e);
+                    }
+                }
+            } finally
+            {
+                timer.Dispose();
+            }
         }
 
         public bool Terminated { get => _terminated != 0; }
         public void Terminate()
         {
+            if (!Terminated) DoTerminate();
             Interlocked.Exchange(ref _terminated, 1);
+        }
+
+        protected void DoTerminate()
+        {
+            Stop();
         }
 
         public bool Run()
@@ -72,11 +150,13 @@ namespace MessageQueueApplication
             if (ActiveThread != null) return false;
             Active = 1;
             ActiveThread = new Thread(new ThreadStart(Proc));
+            ActiveThread.IsBackground = true;
             ActiveThread.Start();
             return true;
         }
         public void Wait()
         {
+            throw new Exception("Не реализован метод Wait!");
             if (Active == 0) return;
             while (!Terminated)
             {
@@ -87,26 +167,36 @@ namespace MessageQueueApplication
         {
             if (Active == 0) return false;
             Interlocked.Exchange(ref Active, 0);
+            Terminate();
             InternalStop();
-            //SendMessage(MQApplicationMessageCode.MC_TERMINATE);
             return true;
         }
-        public bool SendMessage(int Code, Object obj = null)
+        public bool SendMessage(int Code)
         {
             if (Active == 0) return false;
-            MessageStorage.CreateMessage(Code, obj);
+            MessageStorage.CreateMessage(Code);
             InternalSendMessage(Code);
             return true;
         }
 
-        public bool SendMessage(MQApplicationMessageCode Code, Object obj = null)
+        public bool SendMessage(MQApplicationMessageCode Code)
         {
-            return SendMessage((int)Code, obj);
+            return SendMessage((int)Code);
         }
 
-        public static MQApplicationBase CreateApplication()
+        ~MQApplicationBase()
         {
-            return new MQApplicationWin();
+            Terminate();
+        }
+
+        public MQApplicationBase()
+        {
+            MQMessageStorage = new MQMessageStorage(() => SendMessage((int)MQApplicationMessageCode.MC_DISPATCH_MESSAGE));
+        }
+
+        public void MQNotify(int code, Object obj = null)
+        {
+            MQMessageStorage.MQNotify(code, obj);
         }
     }
 
@@ -121,16 +211,14 @@ namespace MessageQueueApplication
         protected override void InternalLoopMessages()
         {
             if (ewh == null) return;
-            MQApplicationMessage message;
+            if (Terminated) return;
 
             while (ewh.WaitOne())
             {
                 if (Active == 0) return;
                 while (true)
                 {
-                    message = MessageStorage.ExtractMessage();
-                    if (message == null) break;
-                    DispatchMessage(message);
+                    ProcessMessage();
                 }
             }
         }
@@ -142,7 +230,6 @@ namespace MessageQueueApplication
         protected override void InternalStop()
         {
             ewh.Set();
-            ewh = null;
         }
 
     }

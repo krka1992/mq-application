@@ -1,4 +1,5 @@
-﻿using System;
+﻿using MessageQueueApplication.Classes;
+using System;
 using System.Collections.Generic;
 using System.Text;
 
@@ -9,6 +10,11 @@ namespace MessageQueueApplication
         bool Run();
         void Wait();
         bool Stop();
-        bool SendMessage(int Code, Object obj);
+        bool SendMessage(int Code);
+    }
+
+    public interface IMessageQueue
+    {
+        void MQNotify(int code, Object obj = null);
     }
 }
