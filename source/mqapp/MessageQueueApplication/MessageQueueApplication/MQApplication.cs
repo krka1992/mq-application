@@ -13,7 +13,7 @@ namespace MessageQueueApplication
         MC_TIMER = 2
     }
 
-    public abstract class MQApplicationBase: IMQApplication, IMessageQueue
+    public abstract class MQApplication: IMQApplication, IMessageQueue
     {
         protected int Active = 0;
         private int _terminated = 0;
@@ -22,10 +22,32 @@ namespace MessageQueueApplication
         private Thread ActiveThread = null;
         private Timer timer = null;
 
-        protected abstract void InternalSendMessage(int Code);
-        protected abstract void InternalLoopMessages();
-        protected abstract void InternalPrepare();
-        protected abstract void InternalStop();
+        private EventWaitHandle ewh;
+
+        private void InternalSendMessage()
+        {
+            ewh.Set();
+        }
+        private void InternalLoopMessages()
+        {
+            if (ewh == null) return;
+            if (Terminated) return;
+
+            while (ewh.WaitOne())
+            {
+                if (Active == 0) return;
+                ProcessMessages();
+            }
+        }
+        private void InternalPrepare()
+        {
+            ewh = new EventWaitHandle(false, EventResetMode.AutoReset);
+        }
+
+        private void InternalStop()
+        {
+            ewh.Set();
+        }
 
         protected virtual void OnTimer()
         {
@@ -144,8 +166,11 @@ namespace MessageQueueApplication
         public bool Terminated { get => _terminated != 0; }
         public void Terminate()
         {
-            if (!Terminated) DoTerminate();
-            Interlocked.Exchange(ref _terminated, 1);
+            if (!Terminated)
+            {
+                Interlocked.Exchange(ref _terminated, 1);
+                DoTerminate();
+            }
         }
 
         protected void DoTerminate()
@@ -166,12 +191,12 @@ namespace MessageQueueApplication
         }
         public void Wait()
         {
-            throw new Exception("Не реализован метод Wait!");
             if (Active == 0) return;
             while (!Terminated)
             {
                 Thread.Sleep(1);
             }
+            throw new Exception("Плохая реализация метода Wait!");
         }
         public bool Stop()
         {
@@ -185,7 +210,7 @@ namespace MessageQueueApplication
         {
             if (Active == 0) return false;
             MessageStorage.CreateMessage(Code);
-            InternalSendMessage(Code);
+            InternalSendMessage();
             return true;
         }
 
@@ -194,12 +219,12 @@ namespace MessageQueueApplication
             return SendMessage((int)Code);
         }
 
-        ~MQApplicationBase()
+        ~MQApplication()
         {
             Terminate();
         }
 
-        public MQApplicationBase()
+        public MQApplication()
         {
             MQMessageStorage = new MQMessageStorage(() => SendMessage((int)MQApplicationMessageCode.MC_DISPATCH_MESSAGE));
         }
@@ -209,37 +234,4 @@ namespace MessageQueueApplication
             MQMessageStorage.MQNotify(code, obj);
         }
     }
-
-    public class MQApplicationWin: MQApplicationBase
-    {
-        private EventWaitHandle ewh;
-
-        protected override void InternalSendMessage(int Code)
-        {
-            ewh.Set();
-        }
-        protected override void InternalLoopMessages()
-        {
-            if (ewh == null) return;
-            if (Terminated) return;
-
-            while (ewh.WaitOne())
-            {
-                if (Active == 0) return;
-                ProcessMessages();
-            }
-        }
-        protected override void InternalPrepare()
-        {
-            ewh = new EventWaitHandle(false, EventResetMode.AutoReset);
-        }
-
-        protected override void InternalStop()
-        {
-            ewh.Set();
-        }
-
-    }
-
-    public class MQApplication : MQApplicationWin { }
 }
