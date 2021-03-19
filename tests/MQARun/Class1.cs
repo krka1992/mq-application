@@ -58,6 +58,7 @@ namespace MQARun
 
         protected override void OnTimer()
         {
+            //Terminate();
             PostMessage(ownerHandle, WM_MESSAGE_TIMER, 0, 0);
         }
     }

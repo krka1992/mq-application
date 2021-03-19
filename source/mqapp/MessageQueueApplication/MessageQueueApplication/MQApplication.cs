@@ -69,23 +69,27 @@ namespace MessageQueueApplication
             }
         }
 
-        internal void ProcessMessage() 
+        internal void ProcessMessages() 
         {
-            MQApplicationMessage message = MessageStorage.ExtractMessage();
-            if (message == null) return;
-
-            switch (message.Code)
+            MQApplicationMessage message;
+            while (true)
             {
-                case (int)MQApplicationMessageCode.MC_TERMINATE: 
-                    Terminate();
-                    return;
-                case (int)MQApplicationMessageCode.MC_DISPATCH_MESSAGE:
-                    DispatchMessageQueue();
-                    return;
-                case (int)MQApplicationMessageCode.MC_TIMER:
-                    OnTimer();
-                    return;
-            }            
+                message = MessageStorage.ExtractMessage();
+                if (message == null) return;
+
+                switch (message.Code)
+                {
+                    case (int)MQApplicationMessageCode.MC_TERMINATE:
+                        Terminate();
+                        return;
+                    case (int)MQApplicationMessageCode.MC_DISPATCH_MESSAGE:
+                        DispatchMessageQueue();
+                        return;
+                    case (int)MQApplicationMessageCode.MC_TIMER:
+                        OnTimer();
+                        return;
+                }
+            }           
         }
 
         private void LoopMessages()
@@ -167,7 +171,7 @@ namespace MessageQueueApplication
         {
             if (Active == 0) return false;
             Interlocked.Exchange(ref Active, 0);
-            Terminate();
+            //Terminate();
             InternalStop();
             return true;
         }
@@ -216,10 +220,7 @@ namespace MessageQueueApplication
             while (ewh.WaitOne())
             {
                 if (Active == 0) return;
-                while (true)
-                {
-                    ProcessMessage();
-                }
+                ProcessMessages();
             }
         }
         protected override void InternalPrepare()
